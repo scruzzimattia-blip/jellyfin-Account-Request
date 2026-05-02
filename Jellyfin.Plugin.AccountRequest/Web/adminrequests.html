@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Account Requests</title>
+    <style>
+        .accountRequestPage {
+            color: var(--theme-text-color, #fff);
+        }
+
+        .accountRequestHeader {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .accountRequestStatus {
+            color: var(--theme-secondary-text-color, rgba(255, 255, 255, .75));
+            margin: .5rem 0 1rem;
+        }
+
+        .accountRequestList {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .accountRequestCard {
+            background: var(--card-background, rgba(255, 255, 255, .08));
+            border: 1px solid var(--card-border-color, rgba(255, 255, 255, .12));
+            border-radius: .4rem;
+            padding: 1rem;
+        }
+
+        .accountRequestCardHeader {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: .75rem;
+        }
+
+        .accountRequestTitle {
+            color: var(--theme-accent-color, #00a4dc);
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .accountRequestMeta {
+            color: var(--theme-secondary-text-color, rgba(255, 255, 255, .75));
+            font-size: .9rem;
+            margin-top: .25rem;
+        }
+
+        .accountRequestMessage {
+            line-height: 1.5;
+            margin: .75rem 0 1rem;
+            white-space: pre-wrap;
+        }
+
+        .accountRequestActions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem;
+        }
+
+        .accountRequestEmpty {
+            background: var(--card-background, rgba(255, 255, 255, .08));
+            border-radius: .4rem;
+            padding: 1.25rem;
+            text-align: center;
+        }
+
+        .accountRequestDialogBackdrop {
+            align-items: center;
+            background: rgba(0, 0, 0, .72);
+            display: none;
+            inset: 0;
+            justify-content: center;
+            position: fixed;
+            z-index: 9999;
+        }
+
+        .accountRequestDialogBackdrop.isOpen {
+            display: flex;
+        }
+
+        .accountRequestDialog {
+            background: var(--card-focused-background, #202020);
+            border-radius: .5rem;
+            box-shadow: 0 .5rem 2rem rgba(0, 0, 0, .45);
+            max-width: 32rem;
+            padding: 1.5rem;
+            width: calc(100% - 2rem);
+        }
+
+        .accountRequestPassword {
+            background: rgba(0, 0, 0, .3);
+            border-radius: .25rem;
+            font-family: monospace;
+            margin: 1rem 0;
+            overflow-wrap: anywhere;
+            padding: .75rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="accountRequestPage" data-role="page" class="page type-interior pluginConfigurationPage accountRequestPage">
+        <div data-role="content" class="content-primary">
+            <div class="verticalSection">
+                <div class="accountRequestHeader">
+                    <div>
+                        <h2 class="sectionTitle">Account Requests</h2>
+                        <p id="accountRequestStatus" class="accountRequestStatus">Loading pending account requests...</p>
+                    </div>
+                    <button id="accountRequestRefresh" type="button" is="emby-button" class="raised button-submit">
+                        <span>Refresh</span>
+                    </button>
+                </div>
+                <div id="accountRequestList" class="accountRequestList"></div>
+            </div>
+        </div>
+
+        <div id="accountRequestPasswordDialog" class="accountRequestDialogBackdrop" role="dialog" aria-modal="true" aria-labelledby="accountRequestPasswordTitle">
+            <div class="accountRequestDialog">
+                <h3 id="accountRequestPasswordTitle">Account Approved</h3>
+                <p>The user account was created. Share this temporary password with the requester:</p>
+                <div id="accountRequestPassword" class="accountRequestPassword"></div>
+                <div class="accountRequestActions">
+                    <button id="accountRequestCopyPassword" type="button" is="emby-button" class="raised button-submit">
+                        <span>Copy Password</span>
+                    </button>
+                    <button id="accountRequestCloseDialog" type="button" is="emby-button" class="raised">
+                        <span>Close</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const refreshIntervalMs = 30000;
+            const page = document.getElementById('accountRequestPage');
+            const list = document.getElementById('accountRequestList');
+            const status = document.getElementById('accountRequestStatus');
+            const refreshButton = document.getElementById('accountRequestRefresh');
+            const dialog = document.getElementById('accountRequestPasswordDialog');
+            const passwordValue = document.getElementById('accountRequestPassword');
+            const copyButton = document.getElementById('accountRequestCopyPassword');
+            const closeButton = document.getElementById('accountRequestCloseDialog');
+            let refreshTimer;
+
+            function apiUrl(path) {
+                if (window.ApiClient && typeof window.ApiClient.getUrl === 'function') {
+                    return window.ApiClient.getUrl(path);
+                }
+
+                return `/${path}`;
+            }
+
+            function apiRequest(path, options) {
+                const requestOptions = Object.assign({
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                }, options || {});
+
+                if (window.ApiClient && typeof window.ApiClient.ajax === 'function') {
+                    return window.ApiClient.ajax(Object.assign({
+                        url: apiUrl(path),
+                        type: requestOptions.method || 'GET',
+                        contentType: 'application/json'
+                    }, requestOptions.body ? { data: requestOptions.body } : {}));
+                }
+
+                return fetch(apiUrl(path), requestOptions).then(async response => {
+                    if (!response.ok) {
+                        const error = await response.json().catch(() => ({ message: response.statusText }));
+                        throw new Error(error.message || response.statusText);
+                    }
+
+                    if (response.status === 204) {
+                        return null;
+                    }
+
+                    return response.json();
+                });
+            }
+
+            function escapeHtml(value) {
+                return String(value || '').replace(/[&<>"']/g, character => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[character]));
+            }
+
+            function formatDate(value) {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) {
+                    return 'Unknown date';
+                }
+
+                return date.toLocaleString();
+            }
+
+            function setBusy(isBusy) {
+                refreshButton.disabled = isBusy;
+            }
+
+            function renderRequests(requests) {
+                const pendingRequests = requests
+                    .filter(request => String(request.status || '').toLowerCase() === 'pending')
+                    .sort((left, right) => new Date(left.requestedAt) - new Date(right.requestedAt));
+
+                if (pendingRequests.length === 0) {
+                    list.innerHTML = '<div class="accountRequestEmpty">No pending account requests.</div>';
+                    status.textContent = 'No pending requests found.';
+                    return;
+                }
+
+                status.textContent = `${pendingRequests.length} pending request${pendingRequests.length === 1 ? '' : 's'}.`;
+                list.innerHTML = pendingRequests.map(request => `
+                    <article class="accountRequestCard" data-request-id="${escapeHtml(request.id)}">
+                        <div class="accountRequestCardHeader">
+                            <div>
+                                <h3 class="accountRequestTitle">${escapeHtml(request.username)}</h3>
+                                <div class="accountRequestMeta">${escapeHtml(request.email)} · ${escapeHtml(formatDate(request.requestedAt))}</div>
+                            </div>
+                        </div>
+                        <div class="accountRequestMessage">${escapeHtml(request.message || 'No message provided.')}</div>
+                        <div class="accountRequestActions">
+                            <button type="button" is="emby-button" class="raised button-submit accountRequestApprove" data-request-id="${escapeHtml(request.id)}">
+                                <span>Approve</span>
+                            </button>
+                            <button type="button" is="emby-button" class="raised accountRequestReject" data-request-id="${escapeHtml(request.id)}">
+                                <span>Reject</span>
+                            </button>
+                        </div>
+                    </article>
+                `).join('');
+            }
+
+            async function loadRequests() {
+                setBusy(true);
+                try {
+                    const requests = await apiRequest('AccountRequest/list');
+                    renderRequests(Array.isArray(requests) ? requests : []);
+                } catch (error) {
+                    status.textContent = error.message || 'Failed to load account requests.';
+                } finally {
+                    setBusy(false);
+                }
+            }
+
+            async function approveRequest(id) {
+                setBusy(true);
+                try {
+                    const result = await apiRequest(`AccountRequest/approve/${encodeURIComponent(id)}`, { method: 'POST' });
+                    passwordValue.textContent = result.temporaryPassword;
+                    dialog.classList.add('isOpen');
+                    await loadRequests();
+                } catch (error) {
+                    status.textContent = error.message || 'Failed to approve request.';
+                } finally {
+                    setBusy(false);
+                }
+            }
+
+            async function rejectRequest(id) {
+                setBusy(true);
+                try {
+                    await apiRequest(`AccountRequest/reject/${encodeURIComponent(id)}`, { method: 'POST' });
+                    const card = list.querySelector(`[data-request-id="${CSS.escape(id)}"]`);
+                    if (card) {
+                        card.remove();
+                    }
+
+                    await loadRequests();
+                } catch (error) {
+                    status.textContent = error.message || 'Failed to reject request.';
+                } finally {
+                    setBusy(false);
+                }
+            }
+
+            list.addEventListener('click', event => {
+                const approveButton = event.target.closest('.accountRequestApprove');
+                if (approveButton) {
+                    approveRequest(approveButton.dataset.requestId);
+                    return;
+                }
+
+                const rejectButton = event.target.closest('.accountRequestReject');
+                if (rejectButton && window.confirm('Reject this account request?')) {
+                    rejectRequest(rejectButton.dataset.requestId);
+                }
+            });
+
+            refreshButton.addEventListener('click', loadRequests);
+            closeButton.addEventListener('click', () => dialog.classList.remove('isOpen'));
+            copyButton.addEventListener('click', async () => {
+                await navigator.clipboard.writeText(passwordValue.textContent || '');
+                copyButton.querySelector('span').textContent = 'Copied';
+                window.setTimeout(() => {
+                    copyButton.querySelector('span').textContent = 'Copy Password';
+                }, 1500);
+            });
+
+            page.addEventListener('pageshow', () => {
+                loadRequests();
+                window.clearInterval(refreshTimer);
+                refreshTimer = window.setInterval(loadRequests, refreshIntervalMs);
+            });
+
+            page.addEventListener('pagehide', () => {
+                window.clearInterval(refreshTimer);
+            });
+
+            loadRequests();
+        }());
+    </script>
+</body>
+</html>

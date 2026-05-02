@@ -35,6 +35,27 @@ public class AccountRequestController : ControllerBase
     }
 
     /// <summary>
+    /// Serves the login-page script referenced from the injected <c>index.html</c> tag.
+    /// </summary>
+    /// <returns>JavaScript for the account request UI on the sign-in page.</returns>
+    [HttpGet("login-inject.js")]
+    [AllowAnonymous]
+    [Produces("application/javascript")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetLoginInjectScript()
+    {
+        const string resourceName = "Jellyfin.Plugin.AccountRequest.Web.logininject.js";
+        var stream = typeof(Plugin).Assembly.GetManifestResourceStream(resourceName);
+        if (stream is null)
+        {
+            return NotFound();
+        }
+
+        return File(stream, "application/javascript; charset=utf-8");
+    }
+
+    /// <summary>
     /// Submits a new account request.
     /// </summary>
     /// <param name="request">The account request payload.</param>

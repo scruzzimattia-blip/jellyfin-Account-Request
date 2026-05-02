@@ -82,11 +82,19 @@ jobs:
 
           manifest_path = root / "manifest.json"
           manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-          release = manifest[0]["versions"][0]
-          release["version"] = f"{version}.0" if version.count(".") == 2 else version
-          release["checksum"] = checksum
-          release["sourceUrl"] = f"https://github.com/{repository}/releases/download/{tag}/{zip_name}"
-          release["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          version_str = f"{version}.0" if version.count(".") == 2 else version
+          versions = manifest[0]["versions"]
+          target_abi = versions[0].get("targetAbi", "10.11.0.0") if versions else "10.11.0.0"
+          new_release = {
+              "version": version_str,
+              "changelog": f"Release {tag}",
+              "targetAbi": target_abi,
+              "sourceUrl": f"https://github.com/{repository}/releases/download/{tag}/{zip_name}",
+              "checksum": checksum,
+              "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+          manifest[0]["versions"] = [v for v in versions if v.get("version") != new_release["version"]]
+          manifest[0]["versions"].insert(0, new_release)
           manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:

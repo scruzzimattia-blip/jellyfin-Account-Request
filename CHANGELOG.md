@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.1 - 2026-05-02
+
+- Load account request UI on the public sign-in page by injecting `login-inject.js` into the web app shell (plugin configuration pages are not loaded before login).
+- Place the **Account Request** button correctly for both manual and visual (user picker) login layouts.
+
 ## 1.0.0 - 2026-05-02
 
 - Initial release of Account Request Plugin.

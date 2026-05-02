@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Web/*.html" />
+    <EmbeddedResource Include="Web/*.js" />
   </ItemGroup>
 
 </Project>

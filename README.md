@@ -31,7 +31,7 @@ Account Request Plugin lets visitors request a Jellyfin account from the login p
 Add this repository URL in Jellyfin under Dashboard > Plugins > Repositories:
 
 ```text
-https://github.com/mattia/jellyfin-plugin-accountrequest/raw/main/manifest.json
+https://github.com/scruzzimattia-blip/jellyfin-Account-Request/raw/main/manifest.json
 ```
 
 The release workflow publishes a zip and an updated release manifest with the computed checksum for tagged releases.

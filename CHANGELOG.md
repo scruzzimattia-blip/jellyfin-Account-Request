@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - 2026-05-02
+
+- Fix login injection when Jellyfin uses a path Base URL (correct `/Base/AccountRequest/login-inject.js`).
+- Strip `Accept-Encoding` for `index.html` responses so HTML is not gzip-compressed before injection (compression previously skipped or broke the script tag).
+
 ## 1.0.1 - 2026-05-02
 
 - Load account request UI on the public sign-in page by injecting `login-inject.js` into the web app shell (plugin configuration pages are not loaded before login).

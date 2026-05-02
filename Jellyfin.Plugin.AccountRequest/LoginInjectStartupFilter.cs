@@ -25,6 +25,10 @@ public sealed class LoginInjectStartupFilter : IStartupFilter
                     return;
                 }
 
+                // Jellyfin enables response compression when the client sends Accept-Encoding.
+                // A compressed body in our buffer would skip injection or corrupt the response; force plaintext HTML.
+                context.Request.Headers.Remove("Accept-Encoding");
+
                 var originalBody = context.Response.Body;
                 await using var buffer = new MemoryStream();
                 context.Response.Body = buffer;
@@ -38,9 +42,7 @@ public sealed class LoginInjectStartupFilter : IStartupFilter
                     context.Response.Body = originalBody;
                 }
 
-                if (context.Response.StatusCode != StatusCodes.Status200OK
-                    || buffer.Length == 0
-                    || context.Response.Headers.ContentEncoding.Count > 0)
+                if (context.Response.StatusCode != StatusCodes.Status200OK || buffer.Length == 0)
                 {
                     buffer.Position = 0;
                     await buffer.CopyToAsync(originalBody, context.RequestAborted).ConfigureAwait(false);
@@ -62,17 +64,25 @@ public sealed class LoginInjectStartupFilter : IStartupFilter
                 if (body.IndexOf(BodyEndTag, StringComparison.OrdinalIgnoreCase) < 0
                     || body.Contains("login-inject.js", StringComparison.Ordinal))
                 {
-                    var outBytes = Encoding.UTF8.GetBytes(body);
-                    context.Response.ContentLength = outBytes.Length;
-                    await originalBody.WriteAsync(outBytes, context.RequestAborted).ConfigureAwait(false);
+                    var passthrough = Encoding.UTF8.GetBytes(body);
+                    context.Response.Headers.Remove("Content-Length");
+                    context.Response.ContentLength = passthrough.Length;
+                    await originalBody.WriteAsync(passthrough, context.RequestAborted).ConfigureAwait(false);
                     return;
                 }
 
-                var pathBase = context.Request.PathBase.Value?.TrimEnd('/') ?? string.Empty;
-                var scriptUrl = $"{pathBase}/AccountRequest/login-inject.js";
+                // PathBase is often empty on the outer pipeline; Jellyfin mounts the app under Map(BaseUrl),
+                // so the URL prefix (e.g. /jellyfin) appears only on Path.
+                var pathPrefix = GetPathPrefixBeforeWeb(context.Request.Path);
+                var scriptUrl = string.IsNullOrEmpty(pathPrefix)
+                    ? "/AccountRequest/login-inject.js"
+                    : $"{pathPrefix}/AccountRequest/login-inject.js";
                 var snippet = $"<script src=\"{scriptUrl}\" defer></script>";
                 var updated = body.Replace(BodyEndTag, snippet + BodyEndTag, StringComparison.OrdinalIgnoreCase);
                 var bytes = Encoding.UTF8.GetBytes(updated);
+
+                context.Response.Headers.Remove("Content-Encoding");
+                context.Response.Headers.Remove("Content-Length");
                 context.Response.ContentLength = bytes.Length;
                 await originalBody.WriteAsync(bytes, context.RequestAborted).ConfigureAwait(false);
             });
@@ -83,8 +93,25 @@ public sealed class LoginInjectStartupFilter : IStartupFilter
     private static bool ShouldTryInject(PathString path)
     {
         var p = path.Value ?? string.Empty;
-        return p.EndsWith("/web/index.html", StringComparison.OrdinalIgnoreCase)
-               || p.EndsWith("/web/", StringComparison.OrdinalIgnoreCase)
-               || p.Equals("/web", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(p))
+        {
+            return false;
+        }
+
+        return p.Contains("/web/", StringComparison.OrdinalIgnoreCase)
+               || p.Contains("/web/index.html", StringComparison.OrdinalIgnoreCase)
+               || p.EndsWith("/web", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetPathPrefixBeforeWeb(PathString path)
+    {
+        var p = path.Value ?? string.Empty;
+        var idx = p.IndexOf("/web", StringComparison.OrdinalIgnoreCase);
+        if (idx <= 0)
+        {
+            return string.Empty;
+        }
+
+        return p[..idx].TrimEnd('/');
     }
 }

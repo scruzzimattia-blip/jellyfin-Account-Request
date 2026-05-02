@@ -12,4 +12,8 @@
     <PackageReference Include="MediaBrowser.Common" Version="4.9.1.90" />
   </ItemGroup>
 
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>

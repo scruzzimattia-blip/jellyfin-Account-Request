@@ -49,6 +49,12 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
                 EnableInMainMenu = true,
                 MenuSection = "server",
                 MenuIcon = "person_add"
+            },
+            new PluginPageInfo
+            {
+                Name = "AccountRequestLoginInjector",
+                EmbeddedResourcePath = "Jellyfin.Plugin.AccountRequest.Web.logininjector.html",
+                EnableInMainMenu = false
             }
         ];
     }

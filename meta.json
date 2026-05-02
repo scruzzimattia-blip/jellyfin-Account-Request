@@ -1,0 +1,9 @@
+{
+  "guid": "a0b260bb-3070-4000-a23d-148f36ab5f08",
+  "name": "Account Request",
+  "description": "Allows users to request accounts from the Jellyfin login page. Admins can approve or reject requests from the dashboard.",
+  "version": "1.0.0.0",
+  "status": "Active",
+  "autoUpdate": true,
+  "targetAbi": "10.11.0.0"
+}

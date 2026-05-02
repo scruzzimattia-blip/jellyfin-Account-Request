@@ -12,8 +12,8 @@
         "changelog": "Initial release",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/scruzzimattia-blip/jellyfin-Account-Request/releases/download/v1.0.0/jellyfin-plugin-accountrequest_1.0.0.zip",
-        "checksum": "PLACEHOLDER_MD5",
-        "timestamp": "2026-05-02T10:25:14Z"
+        "checksum": "c4d83bc3c3b8ae906f3a79137e7d1f71",
+        "timestamp": "2026-05-02T10:42:38Z"
       }
     ]
   }

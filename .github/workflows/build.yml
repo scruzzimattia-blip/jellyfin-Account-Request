@@ -101,3 +101,20 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "$RELEASE_ZIP" manifest.json \
             --title "$GITHUB_REF_NAME" \
             --notes "Release $GITHUB_REF_NAME"
+
+      - name: Push updated manifest to main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp manifest.json /tmp/manifest.release.json
+          git fetch origin main
+          git switch -C main origin/main
+          cp /tmp/manifest.release.json manifest.json
+          git add manifest.json
+          if git diff --staged --quiet; then
+            echo "manifest.json already matches main; skipping commit"
+          else
+            git commit -m "chore: update manifest for ${GITHUB_REF_NAME}"
+            git push origin main
+          fi

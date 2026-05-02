@@ -1,0 +1,103 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore Jellyfin.Plugin.AccountRequest/Jellyfin.Plugin.AccountRequest.csproj
+
+      - name: Build Release
+        run: dotnet build Jellyfin.Plugin.AccountRequest/Jellyfin.Plugin.AccountRequest.csproj --configuration Release --no-restore
+
+      - name: Collect artifacts
+        run: ./build.sh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-plugin-accountrequest
+          path: dist/
+
+      - name: Package release zip
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+
+          root = Path.cwd()
+          dist = root / "dist"
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          zip_path = root / f"jellyfin-plugin-accountrequest_{version}.zip"
+
+          with ZipFile(zip_path, "w", ZIP_DEFLATED) as archive:
+              for file_path in sorted(dist.iterdir()):
+                  if file_path.is_file():
+                      archive.write(file_path, file_path.name)
+
+          print(zip_path.name)
+          PY
+
+      - name: Update release manifest checksum
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          root = Path.cwd()
+          tag = os.environ["GITHUB_REF_NAME"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          version = tag[1:] if tag.startswith("v") else tag
+          zip_name = f"jellyfin-plugin-accountrequest_{version}.zip"
+          zip_path = root / zip_name
+          checksum = hashlib.md5(zip_path.read_bytes()).hexdigest()
+
+          manifest_path = root / "manifest.json"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          release = manifest[0]["versions"][0]
+          release["version"] = f"{version}.0" if version.count(".") == 2 else version
+          release["checksum"] = checksum
+          release["sourceUrl"] = f"https://github.com/{repository}/releases/download/{tag}/{zip_name}"
+          release["timestamp"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"RELEASE_ZIP={zip_name}\n")
+          PY
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$RELEASE_ZIP" manifest.json \
+            --title "$GITHUB_REF_NAME" \
+            --notes "Release $GITHUB_REF_NAME"
